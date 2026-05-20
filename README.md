@@ -4,6 +4,8 @@ VisualPromptCodec optimizes a normal RGB image so a frozen multimodal Gemma mode
 
 The current implementation is RGB-only: the optimizer changes an image tensor, while Gemma's weights stay frozen.
 
+![Flow](images/visualcodec.png)
+
 ## Demo Run
 
 Goal prompt:
@@ -48,8 +50,8 @@ The model is the same in both cases. The only thing that changes is the RGB imag
 
 | Condition | Image | Input to Gemma | Output |
 |---|---|---|---|
-| Seed image | ![Seed Burj image](outputs/visual_prompt_runs_burj_seed/20260520_130422/seed_rgb_preview.png) | Burj image + `Respond:` | Image-oriented response |
-| Optimized image | ![Optimized Burj visual prompt](outputs/visual_prompt_runs_burj_seed/20260520_130422/visual_prompt_rgb_preview.png) | Optimized Burj image + `Respond:` | `AI is like a caveman learning to use a sharp rock by observing and mimicking what others do.` |
+| Seed image | ![Seed Burj image](images/burj.png) | Burj image + `Respond:` | Image-oriented response |
+| Optimized image | ![Optimized Burj visual prompt](images/visual_prompt_rgb_preview.png) | Optimized Burj image + `Respond:` | `AI is like a caveman learning to use a sharp rock by observing and mimicking what others do.` |
 
 ## Evaluation
 
