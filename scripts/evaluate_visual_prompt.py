@@ -22,7 +22,7 @@ from visual_prompt_utils import (
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate an optimized Gemma patch-space visual prompt.")
+    parser = argparse.ArgumentParser(description="Evaluate an optimized RGB visual prompt.")
     parser.add_argument("--run-dir", default=None, help="Run directory containing visual_prompt.pt.")
     parser.add_argument("--artifact", default=None, help="Direct path to a visual prompt .pt artifact.")
     parser.add_argument("--model-path", default=None, help="Override model path; defaults to artifact model_path.")
@@ -73,7 +73,7 @@ def visual_inputs_with_pixels(base_inputs: dict, pixel_values: torch.Tensor, dev
     return inputs
 
 
-def random_patch_baseline(final_pixels: torch.Tensor, image_position_ids: torch.Tensor) -> torch.Tensor:
+def random_image_baseline(final_pixels: torch.Tensor, image_position_ids: torch.Tensor) -> torch.Tensor:
     random_pixels = torch.rand_like(final_pixels)
     mask = valid_patch_mask(image_position_ids)
     enforce_patch_constraints(random_pixels, mask)
@@ -102,7 +102,7 @@ def main() -> None:
         build_visual_inputs(processor, render_text_image(prompt), wrapper),
         device,
     )
-    random_pixels = random_patch_baseline(artifact["final_pixel_values"], artifact["image_position_ids"])
+    random_pixels = random_image_baseline(artifact["final_pixel_values"], artifact["image_position_ids"])
     random_inputs = visual_inputs_with_pixels(visual_template_inputs, random_pixels, device)
 
     results = {
@@ -118,7 +118,7 @@ def main() -> None:
         ("text_prompt", text_inputs),
         ("optimized_visual_prompt", optimized_inputs),
         ("rendered_text_image", rendered_inputs),
-        ("random_patch_image", random_inputs),
+        ("random_image", random_inputs),
     ]
 
     for name, inputs in conditions:
@@ -136,7 +136,7 @@ def main() -> None:
 
     output_path = Path(args.output).expanduser().resolve() if args.output else artifact_path.parent / "evaluation.json"
     output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    random_preview = save_preview(random_pixels, artifact["image_position_ids"], artifact_path.parent / "random_patch_preview.png")
+    random_preview = save_preview(random_pixels, artifact["image_position_ids"], artifact_path.parent / "random_image_preview.png")
     print(f"\nSaved evaluation: {output_path}")
     print(f"Saved random baseline preview: {random_preview}")
 

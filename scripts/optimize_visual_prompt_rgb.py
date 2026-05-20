@@ -51,6 +51,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--image-height", type=int, default=448, help="Trainable RGB source image height.")
     parser.add_argument("--image-width", type=int, default=448, help="Trainable RGB source image width.")
+    parser.add_argument(
+        "--init-image",
+        default=None,
+        help="Optional RGB image path to initialize from instead of a gray image.",
+    )
     parser.add_argument("--noise-scale", type=float, default=0.01, help="Small noise added to the gray seed RGB image.")
     parser.add_argument("--l2-weight", type=float, default=1e-3, help="Penalty for drifting from seed RGB pixels.")
     parser.add_argument("--tv-weight", type=float, default=1e-3, help="Neighbor smoothness penalty over patch pixels.")
@@ -101,6 +106,17 @@ def make_visual_forward_inputs(base_inputs: dict, pixel_values: torch.Tensor, im
 
 def make_seed_rgb(height: int, width: int, device: torch.device, noise_scale: float) -> torch.Tensor:
     rgb = torch.full((1, 3, height, width), 0.5, dtype=torch.float32, device=device)
+    if noise_scale > 0:
+        rgb = rgb + torch.randn_like(rgb) * noise_scale
+    return rgb.clamp(0.0, 1.0)
+
+
+def load_seed_rgb(image_path: str | Path, height: int, width: int, device: torch.device, noise_scale: float) -> torch.Tensor:
+    image = Image.open(image_path).convert("RGB")
+    image = image.resize((width, height), resample=Image.Resampling.BICUBIC)
+    data = torch.ByteTensor(torch.ByteStorage.from_buffer(image.tobytes()))
+    rgb = data.reshape(height, width, 3).permute(2, 0, 1).float().unsqueeze(0) / 255.0
+    rgb = rgb.to(device)
     if noise_scale > 0:
         rgb = rgb + torch.randn_like(rgb) * noise_scale
     return rgb.clamp(0.0, 1.0)
@@ -199,7 +215,12 @@ def main() -> None:
     template_image = Image.new("RGB", (args.image_width, args.image_height), (128, 128, 128))
     visual_inputs = move_batch(build_visual_inputs(processor, template_image, args.wrapper), device)
 
-    seed_rgb = make_seed_rgb(args.image_height, args.image_width, device, args.noise_scale)
+    if args.init_image:
+        init_image_path = Path(args.init_image).expanduser().resolve()
+        print(f"Initializing RGB image from: {init_image_path}")
+        seed_rgb = load_seed_rgb(init_image_path, args.image_height, args.image_width, device, args.noise_scale)
+    else:
+        seed_rgb = make_seed_rgb(args.image_height, args.image_width, device, args.noise_scale)
     seed_pixel_values, image_position_ids = rgb_tensor_to_gemma_pixel_values(
         seed_rgb,
         antialias=args.resize_antialias,
@@ -329,8 +350,9 @@ def main() -> None:
     final_pixel_values = final_pixel_values.detach().clone().cpu()
     final_image_position_ids = final_image_position_ids.detach().clone().cpu()
 
+    seed_rgb_preview_path = save_rgb_preview(seed_rgb.detach().cpu(), run_dir / "seed_rgb_preview.png")
     rgb_preview_path = save_rgb_preview(final_rgb, run_dir / "visual_prompt_rgb_preview.png")
-    patch_preview_path = save_preview(final_pixel_values, final_image_position_ids, run_dir / "visual_prompt_preview.png")
+    processed_preview_path = save_preview(final_pixel_values, final_image_position_ids, run_dir / "visual_prompt_processed_preview.png")
     loss_json, loss_csv = save_loss_history(history, run_dir)
 
     final_visual_inputs = make_visual_forward_inputs(
@@ -343,6 +365,7 @@ def main() -> None:
         "wrapper": args.wrapper,
         "model_path": str(model_path),
         "optimizer_type": "rgb",
+        "init_image": str(Path(args.init_image).expanduser().resolve()) if args.init_image else None,
         "layers": layers,
         "primary_layer": args.primary_layer,
         "target_response_ids": target_response_ids.detach().cpu() if target_response_ids is not None else None,
@@ -352,7 +375,8 @@ def main() -> None:
         "visual_inputs": tensor_batch_to_cpu(final_visual_inputs),
         "text_inputs": tensor_batch_to_cpu(text_inputs),
         "loss_history": history,
-        "preview_path": patch_preview_path,
+        "seed_rgb_preview_path": seed_rgb_preview_path,
+        "preview_path": processed_preview_path,
         "rgb_preview_path": rgb_preview_path,
         "loss_history_json": loss_json,
         "loss_history_csv": loss_csv,
@@ -360,8 +384,9 @@ def main() -> None:
     }
     artifact_path = save_artifact(artifact, run_dir / "visual_prompt.pt")
     print(f"Saved artifact: {artifact_path}")
+    print(f"Saved seed RGB preview: {seed_rgb_preview_path}")
     print(f"Saved RGB preview: {rgb_preview_path}")
-    print(f"Saved patch preview: {patch_preview_path}")
+    print(f"Saved processed preview: {processed_preview_path}")
     print(f"Saved loss history: {loss_json}")
 
 
